@@ -1,7 +1,8 @@
 
 var peerConnection;
+var mirror = false;
 
-function onStreamToggle()
+function toggleStream()
 {
 	const streamToggleButton = document.getElementById('streamToggle');
 
@@ -15,6 +16,14 @@ function onStreamToggle()
 		startConnection();
 		streamToggleButton.innerHTML = 'Stop Streaming';
 	}
+}
+
+function mirrorCamera()
+{
+	mirror = !mirror;
+	const cameraVideoElement = document.getElementById('camera');
+	cameraVideoElement.style.transform = mirror ? 'scaleX(-1)' : '';
+	postJSON('/mirror', null);
 }
 
 function postJSON(site, body)
@@ -77,7 +86,11 @@ document.addEventListener('DOMContentLoaded', () =>
 
 	// Assign a callback for when the button is clicked
 	const streamToggleButton = document.getElementById('streamToggle');
-	streamToggleButton.onclick = onStreamToggle;
+	streamToggleButton.onclick = toggleStream;
+
+	// Assign a callback for when the button is clicked
+	const mirrorCameraButton = document.getElementById('mirrorCamera');
+	mirrorCameraButton.onclick = mirrorCamera;
 });
 
 window.addEventListener('pagehide', async event =>

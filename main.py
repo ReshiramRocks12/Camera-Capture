@@ -9,6 +9,7 @@ from aiohttp import web, web_request
 from aiortc import rtcrtpreceiver
 
 connection: aiortc.RTCPeerConnection = None
+mirror = False
 
 def createConnection() -> None:
 	global connection
@@ -18,6 +19,9 @@ def createConnection() -> None:
 
 	connection = aiortc.RTCPeerConnection()
 	connection.add_listener('track', on_track_recieved)
+	
+async def index_handle(request: web_request.Request) -> web.FileResponse:
+	return web.FileResponse(r'.\index.html')
 
 async def rtc_start_handle(request: web_request.Request) -> web.Response:
 	global connection
@@ -59,8 +63,10 @@ async def rtc_stop_handle(request: web_request.Request) -> web.Response:
 	except Exception as e:
 		return web.Response(text=str(e), status=400)
 
-async def index_handle(request: web_request.Request) -> web.FileResponse:
-	return web.FileResponse(r'.\index.html')
+async def mirror_handle(request: web_request.Request) -> web.Response:
+	global mirror
+	mirror = not mirror
+	return web.Response()
 
 def create_ssl_context(certificate_file_path: str, key_file_path: str, password: str | None = None) -> ssl.SSLContext:
 	# Create and return an SSL context used for client authentication
@@ -74,12 +80,17 @@ def init_routes(app: web.Application) -> None:
 
 	app.router.add_post('/rtcStart', rtc_start_handle) # Route to signal start of stream
 	app.router.add_post('/rtcStop', rtc_stop_handle) # Route to signal end of stream
+	app.router.add_post('/mirror', mirror_handle) # Route to signal end of stream
 
 async def handle_video(track: rtcrtpreceiver.RemoteStreamTrack) -> None:
+	global mirror
+
 	try:
 		while not track.readyState == 'ended':
 			frame = await track.recv()
 			image = frame.to_ndarray(format='bgr24')
+			if mirror:
+				image = cv2.flip(image, 1)
 			cv2.imshow('Camera Capture - Reciever', image)
 			cv2.waitKey(1)
 
