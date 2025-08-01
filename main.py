@@ -1,26 +1,36 @@
+import asyncio
 import json
 import ssl
 
-from aiortc import RTCPeerConnection, RTCSessionDescription
-from aiohttp import web, web_request
+import aiortc
+import cv2
 
-connection: RTCPeerConnection = None
+from aiohttp import web, web_request
+from aiortc import rtcrtpreceiver
+
+connection: aiortc.RTCPeerConnection = None
+
+def createConnection() -> None:
+	global connection
+	
+	if connection:
+		raise RuntimeError('Unable to create a new connection: Connection not closed.')
+
+	connection = aiortc.RTCPeerConnection()
+	connection.add_listener('track', on_track_recieved)
 
 async def rtc_start_handle(request: web_request.Request) -> web.Response:
 	global connection
 
 	try:
+		createConnection()
+
 		data = await request.json()
-
-		if connection:
-			raise RuntimeError('Unable to create a new connection: Connection not closed.')
-
-		connection = RTCPeerConnection()
 
 		# Get the session description
 		sdp = data['sdp']
 		sdp_type = data['type']
-		description = RTCSessionDescription(sdp, sdp_type)
+		description = aiortc.RTCSessionDescription(sdp, sdp_type)
 		await connection.setRemoteDescription(description)
 
 		# Create an answer with ICE candidates to respond to the offer
@@ -43,6 +53,7 @@ async def rtc_stop_handle(request: web_request.Request) -> web.Response:
 
 		await connection.close()
 		connection = None
+		cv2.destroyAllWindows()
 
 		return web.Response()
 	except Exception as e:
@@ -63,6 +74,22 @@ def init_routes(app: web.Application) -> None:
 
 	app.router.add_post('/rtcStart', rtc_start_handle) # Route to signal start of stream
 	app.router.add_post('/rtcStop', rtc_stop_handle) # Route to signal end of stream
+
+async def handle_video(track: rtcrtpreceiver.RemoteStreamTrack) -> None:
+	try:
+		while not track.readyState == 'ended':
+			frame = await track.recv()
+			image = frame.to_ndarray(format='bgr24')
+			cv2.imshow('Camera Capture - Reciever', image)
+			cv2.waitKey(1)
+
+	except Exception as e:
+		if connection: # If this is not caused by the connection closing
+			print(str(e))
+
+def on_track_recieved(track: rtcrtpreceiver.RemoteStreamTrack) -> None:
+	if track.kind == 'video':
+		asyncio.create_task(handle_video(track))
 
 def main() -> int:
 	app = web.Application()
