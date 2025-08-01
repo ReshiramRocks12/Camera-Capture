@@ -4,12 +4,13 @@ import ssl
 
 import aiortc
 import cv2
+import numpy as np
 
 from aiohttp import web, web_request
 from aiortc import rtcrtpreceiver
 
 connection: aiortc.RTCPeerConnection = None
-mirror = False
+settings = None
 
 def createConnection() -> None:
 	global connection
@@ -63,10 +64,16 @@ async def rtc_stop_handle(request: web_request.Request) -> web.Response:
 	except Exception as e:
 		return web.Response(text=str(e), status=400)
 
-async def mirror_handle(request: web_request.Request) -> web.Response:
-	global mirror
-	mirror = not mirror
-	return web.Response()
+async def settings_handle(request: web_request.Request) -> web.Response:
+	global settings
+
+	try:
+		data = await request.json()
+		settings = data
+
+		return web.Response()
+	except Exception as e:
+		return web.Response(text=str(e), status=400)
 
 def create_ssl_context(certificate_file_path: str, key_file_path: str, password: str | None = None) -> ssl.SSLContext:
 	# Create and return an SSL context used for client authentication
@@ -80,16 +87,18 @@ def init_routes(app: web.Application) -> None:
 
 	app.router.add_post('/rtcStart', rtc_start_handle) # Route to signal start of stream
 	app.router.add_post('/rtcStop', rtc_stop_handle) # Route to signal end of stream
-	app.router.add_post('/mirror', mirror_handle) # Route to signal end of stream
+	app.router.add_post('/settings', settings_handle) # Route to signal end of stream
 
 async def handle_video(track: rtcrtpreceiver.RemoteStreamTrack) -> None:
-	global mirror
+	global settings
 
 	try:
+		cv2.namedWindow('Camera Capture - Reciever', cv2.WINDOW_AUTOSIZE)
 		while not track.readyState == 'ended':
 			frame = await track.recv()
-			image = frame.to_ndarray(format='bgr24')
-			if mirror:
+			image: np.ndarray = frame.to_ndarray(format='bgr24')
+			image = cv2.resize(image, (settings['width'], settings['height'])) # Resize to the incoming size of the image stream
+			if settings['mirror']:
 				image = cv2.flip(image, 1)
 			cv2.imshow('Camera Capture - Reciever', image)
 			cv2.waitKey(1)

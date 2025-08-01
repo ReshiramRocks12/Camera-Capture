@@ -1,6 +1,10 @@
 
 var peerConnection;
-var mirror = false;
+var cameraSettings = {
+	mirror: false,
+	width: 0,
+	height: 0
+}
 
 function toggleStream()
 {
@@ -20,10 +24,10 @@ function toggleStream()
 
 function mirrorCamera()
 {
-	mirror = !mirror;
+	cameraSettings.mirror = !cameraSettings.mirror;
 	const cameraVideoElement = document.getElementById('camera');
-	cameraVideoElement.style.transform = mirror ? 'scaleX(-1)' : '';
-	postJSON('/mirror', null);
+	cameraVideoElement.style.transform = cameraSettings.mirror ? 'scaleX(-1)' : '';
+	postJSON('/settings', cameraSettings);
 }
 
 function postJSON(site, body)
@@ -54,7 +58,14 @@ function createPeerConnection()
 {
 	peerConnection = new RTCPeerConnection();
 	const cameraVideoElement = document.getElementById('camera');
-	cameraVideoElement.srcObject.getTracks().forEach(track => peerConnection.addTrack(track));
+	cameraVideoElement.srcObject.getTracks().forEach(track =>
+	{
+		const settings = track.getSettings();
+		peerConnection.addTrack(track);
+		cameraSettings.width = settings.width;
+		cameraSettings.height = settings.height;
+		postJSON('/settings', cameraSettings);
+	});
 }
 
 function startConnection()
