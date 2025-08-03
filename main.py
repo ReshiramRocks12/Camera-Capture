@@ -4,6 +4,7 @@ import json
 import ssl
 import sys
 
+import aiohttp
 import aiortc
 import cv2
 import numpy as np
@@ -114,7 +115,7 @@ async def handle_video(track: rtcrtpreceiver.RemoteStreamTrack) -> None:
 		if connection: # If this is not caused by the connection closing
 			print(str(e))
 
-async def on_webapp_shutdown(app: web.Application):
+async def on_webapp_shutdown(app: web.Application) -> None:
 	if connection:
 		await close_connection()
 
@@ -149,10 +150,14 @@ def main() -> int:
 		print(f'An error occurred creating an SSL context: {str(e)}')
 		return 1
 
-	# Run HTTPS application on the provided network interface and port
-	host = args.host
-	port = args.port
-	web.run_app(app, host=host, port=port, ssl_context=ssl_context)
+	try:
+		# Run HTTPS application on the provided network interface and port
+		host = args.host
+		port = args.port
+		web.run_app(app, host=host, port=port, ssl_context=ssl_context)
+	except:
+		print(f'An error occurred: {str(e)}')
+		return 1
 	return 0
 
 if __name__ == '__main__':
