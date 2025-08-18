@@ -3,7 +3,22 @@ var peerConnection;
 var cameraSettings = {
 	mirror: false,
 	width: 0,
-	height: 0
+	height: 0,
+	facingMode: 'user'
+}
+
+function initializeUserCamera()
+{
+	const cameraVideoElement = document.getElementById('camera');
+	navigator.mediaDevices.getUserMedia(
+	{
+		video: {
+			facingMode: cameraSettings.facingMode
+		},
+		audio: false
+	})
+	.then(stream => cameraVideoElement.srcObject = stream)
+	.catch(console.error);
 }
 
 function toggleStream()
@@ -30,27 +45,37 @@ function mirrorCamera()
 	postJSON('/settings', cameraSettings);
 }
 
+function switchCamera()
+{
+	cameraSettings.facingMode = (cameraSettings.facingMode == 'user' ? 'environment' : 'user');
+	initializeUserCamera(); // Reinitialize camera to switch the video stream
+}
+
 function postJSON(site, body)
 {
 	return fetch(site,
+	{
+		method: 'POST',
+		headers:
 		{
-			method: 'POST',
-			headers:
-			{
-				'Content-Type': 'application/json'
-			},
-			body: JSON.stringify(body)
-		});
+			'Content-Type': 'application/json'
+		},
+		body: JSON.stringify(body)
+	});
 }
 
 async function onIceGatheringStateChange()
 {
+	// Wait for all ICE candidates to be gathered (no trickle ICE)
 	if (peerConnection.iceGatheringState == 'complete')
 	{
+		// localDescription contains the full SDP with all ICE candidates
 		const response = await postJSON('/rtcStart', peerConnection.localDescription.toJSON());
-		response.json().then(async data => await peerConnection.setRemoteDescription(data));
+		const data = await response.json();
+		await peerConnection.setRemoteDescription(data);
+
 		const streamToggleButton = document.getElementById('streamToggle');
-		streamToggleButton.disabled = false;
+		streamToggleButton.disabled = false; // Re-enable the button
 	}
 }
 
@@ -62,6 +87,8 @@ function createPeerConnection()
 	{
 		const settings = track.getSettings();
 		peerConnection.addTrack(track);
+
+		// Give the reciever the current settings to sync resolution
 		cameraSettings.width = settings.width;
 		cameraSettings.height = settings.height;
 		postJSON('/settings', cameraSettings);
@@ -71,7 +98,10 @@ function createPeerConnection()
 function startConnection()
 {
 	const streamToggleButton = document.getElementById('streamToggle');
-	streamToggleButton.disabled = true;
+	const switchCameraButton = document.getElementById('switchCamera');
+
+	switchCameraButton.disabled = true; // Disable the button so the camera stream is not changed while the connection is active
+	streamToggleButton.disabled = true; // Temporarily disable the button until the connection is active 
 	createPeerConnection();
 	peerConnection.createOffer().then(async offer => await peerConnection.setLocalDescription(offer));
 	peerConnection.onicegatheringstatechange = onIceGatheringStateChange;
@@ -80,28 +110,33 @@ function startConnection()
 async function closeConnection()
 {
 	const streamToggleButton = document.getElementById('streamToggle');
-	streamToggleButton.disabled = true;
-	await postJSON('/rtcStop', {});
+	const switchCameraButton = document.getElementById('switchCamera');
+
+	streamToggleButton.disabled = true; // Temporarily disable the button until the connection has been closed
+	await postJSON('/rtcStop', {}); // Signal reciever to stop the connection
 	await peerConnection.close();
 	peerConnection = null;
-	streamToggleButton.disabled = false;
+
+	streamToggleButton.disabled = false; // Re-enable the button
+	switchCameraButton.disabled = false; // Allow the user to change the camera stream again
 }
 
 document.addEventListener('DOMContentLoaded', () =>
 {
 	// Fetch the user's camera
-	const cameraVideoElement = document.getElementById('camera');
-	navigator.mediaDevices.getUserMedia({ video: true, audio: false })
-		.then(stream => cameraVideoElement.srcObject = stream)
-		.catch(console.error);
+	initializeUserCamera();
 
-	// Assign a callback for when the button is clicked
+	// Assign a callback for when the Stream Toggle button is clicked
 	const streamToggleButton = document.getElementById('streamToggle');
 	streamToggleButton.onclick = toggleStream;
 
-	// Assign a callback for when the button is clicked
+	// Assign a callback for when the Mirror Camera button is clicked
 	const mirrorCameraButton = document.getElementById('mirrorCamera');
 	mirrorCameraButton.onclick = mirrorCamera;
+
+	// Assign a callback for when the Switch Camera button is clicked
+	const switchCameraButton = document.getElementById('switchCamera');
+	switchCameraButton.onclick = switchCamera;
 });
 
 window.addEventListener('pagehide', async event =>
