@@ -1,10 +1,18 @@
 
 var peerConnection;
+var settingsChannel;
 var cameraSettings = {
 	mirror: false,
 	width: 0,
 	height: 0,
 	facingMode: 'user'
+}
+
+function stopUserCamera()
+{
+	const cameraVideoElement = document.getElementById('camera');
+	const tracks = cameraVideoElement.srcObject.getTracks();
+	tracks.forEach(track => track.stop());
 }
 
 function initializeUserCamera()
@@ -42,12 +50,13 @@ function mirrorCamera()
 	cameraSettings.mirror = !cameraSettings.mirror;
 	const cameraVideoElement = document.getElementById('camera');
 	cameraVideoElement.style.transform = cameraSettings.mirror ? 'scaleX(-1)' : '';
-	postJSON('/settings', cameraSettings);
+	sendSettings();
 }
 
 function switchCamera()
 {
 	cameraSettings.facingMode = (cameraSettings.facingMode == 'user' ? 'environment' : 'user');
+	stopUserCamera();
 	initializeUserCamera(); // Reinitialize camera to switch the video stream
 }
 
@@ -62,6 +71,15 @@ function postJSON(site, body)
 		},
 		body: JSON.stringify(body)
 	});
+}
+
+function sendSettings()
+{
+	if (settingsChannel)
+		if (settingsChannel.readyState === 'open')
+			settingsChannel.send(JSON.stringify(cameraSettings));
+		else
+			settingsChannel.onopen = sendSettings;
 }
 
 async function onIceGatheringStateChange()
@@ -82,6 +100,12 @@ async function onIceGatheringStateChange()
 function createPeerConnection()
 {
 	peerConnection = new RTCPeerConnection();
+	settingsChannel = peerConnection.createDataChannel('settings',
+	{
+		ordered: true,
+		reliable: true
+	});
+
 	const cameraVideoElement = document.getElementById('camera');
 	cameraVideoElement.srcObject.getTracks().forEach(track =>
 	{
@@ -91,7 +115,6 @@ function createPeerConnection()
 		// Give the reciever the current settings to sync resolution
 		cameraSettings.width = settings.width;
 		cameraSettings.height = settings.height;
-		postJSON('/settings', cameraSettings);
 	});
 }
 
@@ -105,6 +128,7 @@ function startConnection()
 	createPeerConnection();
 	peerConnection.createOffer().then(async offer => await peerConnection.setLocalDescription(offer));
 	peerConnection.onicegatheringstatechange = onIceGatheringStateChange;
+	sendSettings();
 }
 
 async function closeConnection()

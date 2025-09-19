@@ -23,6 +23,7 @@ def create_connection() -> None:
 
 	connection = aiortc.RTCPeerConnection()
 	connection.add_listener('track', on_track_recieved)
+	connection.add_listener('datachannel', on_datachannel)
 
 async def close_connection() -> None:
 	global connection
@@ -72,16 +73,13 @@ async def rtc_stop_handle(request: web_request.Request) -> web.Response:
 	except Exception as e:
 		return web.Response(text=str(e), status=400)
 
-async def settings_handle(request: web_request.Request) -> web.Response:
-	global settings
+def on_datachannel(channel: aiortc.RTCDataChannel) -> None:
+	if channel.label == 'settings':
+		@channel.on('message')
+		def on_message(message: str) -> None:
+			global settings
 
-	try:
-		data = await request.json()
-		settings = data
-
-		return web.Response()
-	except Exception as e:
-		return web.Response(text=str(e), status=400)
+			settings = json.loads(message)
 
 def create_ssl_context(certificate_file_path: str, key_file_path: str, password: str | None = None) -> ssl.SSLContext:
 	# Create and return an SSL context used for client authentication
@@ -95,7 +93,6 @@ def init_routes(app: web.Application) -> None:
 
 	app.router.add_post('/rtcStart', rtc_start_handle) # Route to signal start of stream
 	app.router.add_post('/rtcStop', rtc_stop_handle) # Route to signal end of stream
-	app.router.add_post('/settings', settings_handle) # Route to send camera settings
 
 async def handle_video(track: rtcrtpreceiver.RemoteStreamTrack) -> None:
 	global settings
@@ -105,7 +102,8 @@ async def handle_video(track: rtcrtpreceiver.RemoteStreamTrack) -> None:
 		while not track.readyState == 'ended':
 			frame = await track.recv()
 			image: np.ndarray = frame.to_ndarray(format='bgr24')
-			image = cv2.resize(image, (settings['width'], settings['height'])) # Resize to the incoming size of the image stream
+			if (settings['width'], settings['height']) != (image.shape[0], image.shape[1]):
+				image = cv2.resize(image, (settings['width'], settings['height'])) # Resize to the incoming size of the image stream
 			if settings['mirror']:
 				image = cv2.flip(image, 1)
 			cv2.imshow('Camera Capture - Reciever', image)
